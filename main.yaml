@@ -1,0 +1,230 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: API Gateway, Lambda y Dynamo.
+
+Resources:
+  BaseLambdaExecutionPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Base permissions needed by all lambda functions.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - ec2:CreateNetworkInterface
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DeleteNetworkInterface
+              - dynamodb:UpdateItem
+            Resource: "*"
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      AttributeDefinitions:
+        - AttributeName: candidato_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: candidato_id
+          KeyType: HASH
+
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${AWS::StackName}-Gateway"
+      Description: !Sub "API Gateway creada por ${AWS::StackName}"
+      FailOnWarnings: true
+      Body:
+        swagger: 2.0
+        info:
+          description: |
+            The account API.
+          version: 1.0
+        basePath: /
+        schemes:
+          - https
+        consumes:
+          - application/json
+        produces:
+          - application/json
+        paths:
+          /candidato/{candidatoId}/nombre:
+            get:
+              description: TBD
+              x-amazon-apigateway-integration:
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NombreLambda.Arn}/invocations"
+                credentials: !GetAtt ApiGatewayRole.Arn
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              operationId: getHello
+              parameters:
+                - name: candidatoId
+                  in: path
+                  description: TBD
+                  required: true
+                  type: string
+                  format: uuid
+            post:
+              description: TBD
+              x-amazon-apigateway-integration:
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${NombreLambda.Arn}/invocations"
+                credentials: !GetAtt ApiGatewayRole.Arn
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              operationId: postHello
+              parameters:
+                - name: candidatoId
+                  in: path
+                  description: TBD
+                  required: true
+                  type: string
+                  format: uuid
+                - name: body
+                  in: body
+                  description: TBD
+                  required: true
+                  schema:
+                    type: object
+                    required:
+                    - nombre
+                    properties:
+                      nombre:
+                        type: string
+          /candidato/{candidatoId}/votos:
+            get:
+              description: TBD
+              x-amazon-apigateway-integration:
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VotosLambda.Arn}/invocations"
+                credentials: !GetAtt ApiGatewayRole.Arn
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              operationId: getHello
+              parameters:
+                - name: candidatoId
+                  in: path
+                  description: TBD
+                  required: true
+                  type: string
+                  format: uuid
+            post:
+              description: TBD
+              x-amazon-apigateway-integration:
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${VotosLambda.Arn}/invocations"
+                credentials: !GetAtt ApiGatewayRole.Arn
+                passthroughBehavior: when_no_match
+                httpMethod: POST
+                type: aws_proxy
+              operationId: postHello
+              parameters:
+                - name: candidatoId
+                  in: path
+                  description: TBD
+                  required: true
+                  type: string
+                  format: uuid
+                - name: body
+                  in: body
+                  description: TBD
+                  required: true
+                  schema:
+                    type: object
+                    required:
+                    - votos
+                    properties:
+                      votos:
+                        type: numeric
+
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: test
+
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeLambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt VotosLambda.Arn
+                  - !GetAtt NombreLambda.Arn
+
+
+  NombreLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt Role.Arn
+      Handler: index.handleHttpRequest
+      Runtime: nodejs8.10
+      Environment:
+        Variables:
+          HELLO_DB: !Sub "arn:aws:dynamodb:${AWS::Region}:*:table/${Table}"
+      Code:
+        ZipFile: |
+          exports.handlers = function(event, context) {}
+
+  VotosLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt Role.Arn
+      Handler: index.handleHttpRequest
+      Runtime: nodejs8.10
+      Environment:
+        Variables:
+          HELLO_DB: !Sub "arn:aws:dynamodb:${AWS::Region}:*:table/${Table}"
+      Code:
+        ZipFile: |
+          exports.handlers = function(event, context) {}
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref BaseLambdaExecutionPolicy
+      Policies:
+        - PolicyName: getHello
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:*:table/${Table}"
+        - PolicyName: putHello
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:*:table/${Table}"
